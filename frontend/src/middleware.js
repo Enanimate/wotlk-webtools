@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 export function middleware(request) {
-  const user = '';
+  const user = 'd';
 
   if (!user) {
     return NextResponse.redirect(
