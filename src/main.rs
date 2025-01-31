@@ -77,6 +77,7 @@ async fn download() -> impl IntoResponse {
         Ok(file) => file,
         Err(err) => return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err))),
     };
+    let len = file.metadata().await.unwrap().len();
     
     let stream = ReaderStream::new(file);
     let body = StreamBody::new(stream);
@@ -92,7 +93,7 @@ async fn download() -> impl IntoResponse {
     );
     headers.insert(
         header::CONTENT_LENGTH, 
-        HeaderValue::from(body.size_hint().upper().unwrap()),
+        HeaderValue::from(len),
     );
 
     Ok((headers, body))
