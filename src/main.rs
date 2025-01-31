@@ -92,7 +92,7 @@ async fn download() -> impl IntoResponse {
     );
     headers.insert(
         header::CONTENT_LENGTH, 
-        HeaderValue::from(body.size_hint().exact().unwrap()),
+        HeaderValue::from(body.size_hint().upper().unwrap()),
     );
 
     Ok((headers, body))
