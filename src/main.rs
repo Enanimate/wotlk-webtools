@@ -1,5 +1,5 @@
 use axum::{
-    body::{Body, StreamBody}, http::{header::{self, CONTENT_TYPE}, HeaderMap, HeaderValue, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
+    body::{Body, HttpBody, StreamBody}, http::{header::{self, CONTENT_TYPE}, HeaderMap, HeaderValue, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{de::Read, json, Value};
@@ -77,6 +77,7 @@ async fn download() -> impl IntoResponse {
         Ok(file) => file,
         Err(err) => return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err))),
     };
+    
     let stream = ReaderStream::new(file);
     let body = StreamBody::new(stream);
 
@@ -85,8 +86,13 @@ async fn download() -> impl IntoResponse {
         header::CONTENT_TYPE, 
         "text/plain; charset=utf-8".parse().unwrap(),
     );
-    headers.insert(header::CONTENT_DISPOSITION, 
+    headers.insert(
+        header::CONTENT_DISPOSITION, 
         "attachment; filename=\"download_file.txt\"".parse().unwrap(),
+    );
+    headers.insert(
+        header::CONTENT_LENGTH, 
+        HeaderValue::from(body.size_hint().exact().unwrap()),
     );
 
     Ok((headers, body))
