@@ -1,8 +1,8 @@
 use axum::{
-    body::StreamBody, http::{header::CONTENT_TYPE, HeaderValue, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
+    body::{Body, StreamBody}, http::{header::{self, CONTENT_TYPE}, HeaderMap, HeaderValue, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{de::Read, json, Value};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
 use std::{net::SocketAddr, path};
@@ -61,10 +61,31 @@ async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
     }
 }
 
-async fn download() -> impl IntoResponse {
+async fn downloadleg() -> impl IntoResponse {
     println!("download requested");
+
     //"../wotlk-client-file/wotlk-client.zip"
     let filepath = path::Path::new("testpayload.txt");
 
     fs::read(filepath).await.unwrap_or(Vec::new()).into_response()
+}
+
+async fn download() -> impl IntoResponse {
+    let file = match fs::File::open("testpayload.txt").await {
+        Ok(file) => file,
+        Err(err) => return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err))),
+    };
+    let stream = ReaderStream::new(file);
+    let body = StreamBody::new(stream);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE, 
+        "text/plain; charset=utf-8".parse().unwrap(),
+    );
+    headers.insert(header::CONTENT_DISPOSITION, 
+        "attachment; filename=\"download_file.txt\"".parse().unwrap(),
+    );
+
+    Ok((headers, body))
 }
