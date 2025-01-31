@@ -1,11 +1,10 @@
 use axum::{
-    http::{header::CONTENT_TYPE, HeaderValue, Method},
-    routing::{get, post},
-    Json, Router,
+    http::{header::CONTENT_TYPE, HeaderValue, Method}, response::IntoResponse, routing::{get, post}, Json, Router
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::net::SocketAddr;
+use tokio::fs;
+use std::{net::SocketAddr, path};
 use tower_http::cors::CorsLayer;
 
 #[derive(Deserialize)]
@@ -30,6 +29,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", post(jsonfn))
+        .route("/download", get(download))
         .layer(cors);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
@@ -58,4 +58,11 @@ async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
         };
         Json(body)
     }
+}
+
+async fn download() -> impl IntoResponse {
+    println!("download requested");
+    let filepath = path::Path::new("../wotlk-client-file/wotlk-client.zip");
+
+    fs::read(filepath).await.unwrap_or(Vec::new()).into_response()
 }

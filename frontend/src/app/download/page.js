@@ -1,15 +1,16 @@
 "use client";
 
 export default function download() {
-    const downloadFile = async () => {
-        const response = await fetch("/api/download");
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'wotlk-client.zip');
-        document.body.appendChild(link);
-        link.click();
+    const downloadFile = async (event) => {
+        event.preventDefault()
+
+    
+        let response = await fetch('/api/download', {
+          method: 'GET',
+          headers: {
+            'Content-type': 'application/octet-stream'
+          }
+        })
       };
 
     return (
