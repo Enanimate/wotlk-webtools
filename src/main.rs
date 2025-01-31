@@ -71,7 +71,9 @@ async fn downloadleg() -> impl IntoResponse {
 }
 
 async fn download() -> impl IntoResponse {
-    let file = match fs::File::open("testpayload.txt").await {
+    println!("Download Requested...");
+
+    let file = match fs::File::open("../wotlk-client-file/wotlk-client.zip").await {
         Ok(file) => file,
         Err(err) => return Err((StatusCode::NOT_FOUND, format!("File not found: {}", err))),
     };
