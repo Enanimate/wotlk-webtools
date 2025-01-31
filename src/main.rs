@@ -32,7 +32,7 @@ async fn main() {
         .route("/download", get(download))
         .layer(cors);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+    let addr = SocketAddr::from(([10, 0, 1, 243], 3001));
     println!("listening on {}", addr);
 
     axum::Server::bind(&addr)
