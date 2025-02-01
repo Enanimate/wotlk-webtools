@@ -4,6 +4,7 @@ use axum::{
 use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{MySql, MySqlPool, Pool};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
@@ -137,21 +138,36 @@ async fn setup_datapool() -> Pool<MySql> {
 #[derive(sqlx::FromRow)]
 pub struct Res {
     username: String,
-    verifier: Vec<u8>
+    verifier: Vec<u8>,
+    salt: Vec<u8>
 }
 
 async fn check_login() {
     let pool = setup_datapool().await;
-    let user = "Mauzy";
+    let user = "$Enanimate";
+    let pass = "$Kbo530wy7!";
 
     let result = sqlx::query_as::<_, Res>(
-        "SELECT username,verifier FROM account WHERE username=?")
+        "SELECT username,verifier,salt FROM account WHERE username=?")
         .bind(user)
         .fetch_all(&pool)
         .await
         .unwrap();
 
-    println!("{:?}\n{:?}", result[0].username, (result[0].verifier).to_ascii_lowercase());
+    println!("{:?}\n{:?}\n{:?}", result[0].username, result[0].verifier, result[0].salt);
+    check_auth(user, pass, result[0].salt.clone()).await;
+}
+
+async fn check_auth(username: &str, password: &str, salt: Vec<u8>) {
+    let mut initial_hash = Sha256::new();
+    initial_hash.update(format!("{}|{}", username, password).as_bytes());
+    let inital = initial_hash.finalize();
+
+    let mut final_hash = Sha256::new();
+    final_hash.update(inital);
+    final_hash.update(&salt);
+    
+    println!("\n\n{:#?}", final_hash.finalize());
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
