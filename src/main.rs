@@ -134,17 +134,23 @@ async fn setup_datapool() -> Pool<MySql> {
     MySqlPool::connect(&format!("mysql://{user}:{password}@localhost/acore_auth")).await.unwrap()
 }
 
+#[derive(sqlx::FromRow)]
+pub struct Res {
+    username: String,
+    verifier: Vec<u8>
+}
+
 async fn check_login() {
     let pool = setup_datapool().await;
     let user = "Mauzy";
 
-    let result = sqlx::query(
+    let result = sqlx::query_as::<_, Res>(
         "SELECT username,verifier FROM account WHERE username='Mauzy'")
         .fetch_all(&pool)
         .await
         .unwrap();
 
-    println!("{:?}", result);
+    println!("{:?}\n{:?}", result[0].username, result[0].verifier);
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
