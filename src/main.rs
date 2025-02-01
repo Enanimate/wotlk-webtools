@@ -139,9 +139,10 @@ async fn check_login() {
     let user = "Mauzy";
 
     let result = sqlx::query(
-        "SELECT username,verifier FROM account WHERE username='(user)' values (?)")
+        "SELECT username,verifier FROM account WHERE username='(?)'")
         .bind(user)
-        .execute(&pool).await;
+        .fetch_all(&pool)
+        .await;
 
     match result {
         Err(e) => {
