@@ -142,17 +142,10 @@ async fn check_login() {
         "SELECT username,verifier FROM account WHERE username='(?)'")
         .bind(user)
         .fetch_all(&pool)
-        .await;
+        .await
+        .unwrap();
 
-    match result {
-        Err(e) => {
-            println!("Error: {}", e);
-        }
-
-        Ok(res) => {
-            println!("Ok: {:#?}", res)
-        }
-    }
+    println!("{:?}", result);
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
