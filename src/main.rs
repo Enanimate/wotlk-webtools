@@ -1,10 +1,10 @@
 use axum::{
-    handler::HandlerWithoutStateExt, http::{header::{self, CONTENT_TYPE}, uri::Authority, HeaderMap, HeaderValue, Method, StatusCode, Uri}, response::{IntoResponse, Redirect}, routing::{get, post}, BoxError, Json, Router
+    handler::HandlerWithoutStateExt, http::{header::{self, CONTENT_TYPE}, uri::Authority, HeaderMap, HeaderValue, Method, StatusCode, Uri}, response::{IntoResponse, Redirect}, routing::get, BoxError, Json, Router
 };
 use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
-use sqlx::MySqlPool;
+use sqlx::{MySql, MySqlPool, Pool};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
 use std::{net::SocketAddr, path::PathBuf};
@@ -68,9 +68,8 @@ async fn main() {
         .allow_headers([CONTENT_TYPE]);
 
     let app = Router::new()
-        .route("/", post(jsonfn))
+        .route("/", get(check_login).post(jsonfn))
         .route("/download", get(download))
-        .route("/config", get(readconfigs))
         .layer(cors);
 
     // run https server
@@ -80,10 +79,6 @@ async fn main() {
         .serve(app.into_make_service())
         .await
         .unwrap();
-}
-
-async fn handler() -> &'static str {
-    "Hello, World!"
 }
 
 async fn redirect_http_to_https(ports: Ports) {
@@ -128,6 +123,35 @@ async fn redirect_http_to_https(ports: Ports) {
     axum::serve(listener, redirect.into_make_service())
         .await
         .unwrap();
+}
+
+async fn setup_datapool() -> Pool<MySql> {
+    let file = fs::read("../wotlk-configs/wotlk-config.txt").await.unwrap();
+    let res: Configs = serde_json::from_slice(&file).unwrap();
+
+    let user = res.db_user;
+    let password = res.db_password;
+    MySqlPool::connect(&format!("mysql://{user}:{password}@localhost/acore_auth")).await.unwrap()
+}
+
+async fn check_login(Json(payload): Json<Login>) {
+    let pool = setup_datapool().await;
+    let user = "Mauzy";
+
+    let result = sqlx::query(
+        "SELECT username,verifier FROM account WHERE username='(user)' values (?)")
+        .bind(user)
+        .execute(&pool).await;
+
+    match result {
+        Err(e) => {
+            println!("Error: {}", e);
+        }
+
+        Ok(res) => {
+            println!("Ok: {:#?}", res)
+        }
+    }
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
@@ -176,15 +200,4 @@ async fn download() -> impl IntoResponse {
     );
 
     Ok((headers, body))
-}
-
-async fn readconfigs() {
-    let file = fs::read("../wotlk-configs/wotlk-config.txt").await.unwrap();
-    let res: Configs = serde_json::from_slice(&file).unwrap();
-
-    let user = res.db_user;
-    let password = res.db_password;
-    let pool = MySqlPool::connect(&format!("mysql://{user}:{password}@localhost/acore_auth")).await.unwrap();
-
-    println!("Configs: database user={user}, database password={password}")
 }
