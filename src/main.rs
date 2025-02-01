@@ -1,12 +1,27 @@
 use axum::{
-    body::{Body, HttpBody, StreamBody}, http::{header::{self, CONTENT_TYPE}, HeaderMap, HeaderValue, Method, StatusCode}, response::IntoResponse, routing::{get, post}, Json, Router
+    handler::HandlerWithoutStateExt, http::{header::{self, CONTENT_TYPE}, uri::Authority, HeaderMap, HeaderValue, Method, StatusCode, Uri}, response::{IntoResponse, Redirect}, routing::{get, post}, BoxError, Json, Router
 };
+use axum_extra::extract::Host;
+use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
-use serde_json::{de::Read, json, Value};
+use sqlx::MySqlPool;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use std::{net::SocketAddr, path};
+use std::{net::SocketAddr, path::PathBuf};
 use tower_http::cors::CorsLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Clone, Copy)]
+struct Ports {
+    http: u16,
+    https: u16,
+}
+
+#[derive(Deserialize)]
+pub struct Configs {
+    db_user: String,
+    db_password: String,
+}
 
 #[derive(Deserialize)]
 pub struct Login {
@@ -23,6 +38,30 @@ pub struct LoginResponse {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| format!("{}=debug", env!("CARGO_CRATE_NAME")).into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let ports = Ports {
+        http: 7878,
+        https: 3001,
+    };
+
+    tokio::spawn(redirect_http_to_https(ports));
+
+    let config = RustlsConfig::from_pem_file(
+        PathBuf::from("../wotlk-configs")
+            .join("certificate.pem"),
+        PathBuf::from("../wotlk-configs")
+            .join("private.pem"),
+    )
+    .await
+    .unwrap();
+
     let cors = CorsLayer::new()
         .allow_origin("http://127.0.0.1:3000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST])
@@ -31,13 +70,62 @@ async fn main() {
     let app = Router::new()
         .route("/", post(jsonfn))
         .route("/download", get(download))
+        .route("/config", get(readconfigs))
         .layer(cors);
 
-    let addr = SocketAddr::from(([10, 0, 1, 243], 3001));
-    println!("listening on {}", addr);
-
-    axum::Server::bind(&addr)
+    // run https server
+    let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
+    tracing::debug!("listening on {}", addr);
+    axum_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+async fn handler() -> &'static str {
+    "Hello, World!"
+}
+
+async fn redirect_http_to_https(ports: Ports) {
+    fn make_https(host: &str, uri: Uri, https_port: u16) -> Result<Uri, BoxError> {
+        let mut parts = uri.into_parts();
+
+        parts.scheme = Some(axum::http::uri::Scheme::HTTPS);
+
+        if parts.path_and_query.is_none() {
+            parts.path_and_query = Some("/".parse().unwrap());
+        }
+
+        let authority: Authority = host.parse()?;
+        let bare_host = match authority.port() {
+            Some(port_struct) => authority
+                .as_str()
+                .strip_suffix(port_struct.as_str())
+                .unwrap()
+                .strip_suffix(':')
+                .unwrap(), // if authority.port() is Some(port) then we can be sure authority ends with :{port}
+            None => authority.as_str(),
+        };
+
+        parts.authority = Some(format!("{bare_host}:{https_port}").parse()?);
+
+        Ok(Uri::from_parts(parts)?)
+    }
+
+    let redirect = move |Host(host): Host, uri: Uri| async move {
+        match make_https(&host, uri, ports.https) {
+            Ok(uri) => Ok(Redirect::permanent(&uri.to_string())),
+            Err(error) => {
+                tracing::warn!(%error, "failed to convert URI to HTTPS");
+                Err(StatusCode::BAD_REQUEST)
+            }
+        }
+    };
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], ports.http));
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, redirect.into_make_service())
         .await
         .unwrap();
 }
@@ -61,15 +149,6 @@ async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
     }
 }
 
-async fn downloadleg() -> impl IntoResponse {
-    println!("download requested");
-
-    //"../wotlk-client-file/wotlk-client.zip"
-    let filepath = path::Path::new("testpayload.txt");
-
-    fs::read(filepath).await.unwrap_or(Vec::new()).into_response()
-}
-
 async fn download() -> impl IntoResponse {
     println!("Download Requested...");
 
@@ -80,7 +159,7 @@ async fn download() -> impl IntoResponse {
     let len = file.metadata().await.unwrap().len();
     
     let stream = ReaderStream::new(file);
-    let body = StreamBody::new(stream);
+    let body = axum::body::Body::from_stream(stream);
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -89,7 +168,7 @@ async fn download() -> impl IntoResponse {
     );
     headers.insert(
         header::CONTENT_DISPOSITION, 
-        "attachment; filename=\"download_file.txt\"".parse().unwrap(),
+        "attachment; filename=\"wotlk.zip\"".parse().unwrap(),
     );
     headers.insert(
         header::CONTENT_LENGTH, 
@@ -97,4 +176,15 @@ async fn download() -> impl IntoResponse {
     );
 
     Ok((headers, body))
+}
+
+async fn readconfigs() {
+    let file = fs::read("../wotlk-configs/wotlk-config.txt").await.unwrap();
+    let res: Configs = serde_json::from_slice(&file).unwrap();
+
+    let user = res.db_user;
+    let password = res.db_password;
+    let pool = MySqlPool::connect(&format!("mysql://{user}:{password}@localhost/acore_auth")).await.unwrap();
+
+    println!("Configs: database user={user}, database password={password}")
 }
