@@ -74,7 +74,7 @@ async fn main() {
         .layer(cors);
 
     // run https server
-    let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
+    let addr = SocketAddr::from(([10, 0, 1, 243], ports.https));
     tracing::debug!("listening on {}", addr);
     axum_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
