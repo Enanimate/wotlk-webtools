@@ -5,10 +5,10 @@ use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{MySql, MySqlPool, Pool};
+use sqlx::{types::chrono::{self, Local}, MySql, MySqlPool, Pool};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::{IpAddr, SocketAddr}, path::PathBuf};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -70,6 +70,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(check_login).post(jsonfn))
+        .route("/create", get(get_id))
         .route("/download", get(download))
         .layer(cors);
 
@@ -136,7 +137,7 @@ async fn setup_datapool() -> Pool<MySql> {
 }
 
 #[derive(sqlx::FromRow)]
-pub struct Res {
+pub struct AuthInfo {
     username: String,
     verifier: Vec<u8>,
     salt: Vec<u8>
@@ -147,7 +148,7 @@ async fn check_login() {
     let user = "$Enanimate";
     let pass = "$Kbo530wy7!";
 
-    let result = sqlx::query_as::<_, Res>(
+    let result = sqlx::query_as::<_, AuthInfo>(
         "SELECT username,verifier,salt FROM account WHERE username=?")
         .bind(user)
         .fetch_all(&pool)
@@ -155,10 +156,10 @@ async fn check_login() {
         .unwrap();
 
     println!("{:?}\n{:?}\n{:?}", result[0].username, result[0].verifier, result[0].salt);
-    check_auth(user, pass, result[0].salt.clone()).await;
+    create_verifier(user, pass, result[0].salt.clone()).await;
 }
 
-async fn check_auth(username: &str, password: &str, salt: Vec<u8>) {
+async fn create_verifier(username: &str, password: &str, salt: Vec<u8>) {
     let mut initial_hash = Sha256::new();
     initial_hash.update(format!("{}|{}", username, password).as_bytes());
     let inital = initial_hash.finalize();
@@ -168,6 +169,80 @@ async fn check_auth(username: &str, password: &str, salt: Vec<u8>) {
     final_hash.update(&salt);
     
     println!("\n\n{:#?}", final_hash.finalize());
+}
+
+pub struct AccountInfo {
+    id: i32,
+    username: String,
+    salt: Vec<u8>,
+    verifier: Vec<u8>,
+    session_key: Vec<u8>,
+    totp_secret: Vec<u8>,
+    email: String,
+    reg_mail: String,
+    joindate: chrono::DateTime<Local>,
+    last_ip: IpAddr,
+    last_attempt_ip: IpAddr,
+    failed_logins: i32,
+    locked: i8,
+    lock_country: String,
+    last_login: chrono::DateTime<Local>,
+    online: i32,
+    expansion: i8,
+    mutetime: i64,
+    mutereason: String,
+    muteby: String,
+    locale: i8,
+    os: String,
+    recruiter: i32,
+    totaltime: i32
+}
+
+async fn create_account() {
+    let pool = setup_datapool().await;
+    let user = "Enanimate";
+    let pass = "Kbo530wy7!";
+
+    let result = sqlx::query(
+        "insert into account (
+            id,
+            username,
+            salt,
+            verifier,
+            session_key,
+            totp_secret,
+            email,
+            reg_mail,
+            joindate,
+            last_ip,
+            last_attempt_ip,
+            failed_logins,
+            locked,
+            lock_country,
+            last_login,
+            online,
+            expansion,
+            mutetime,
+            mutereason,
+            muteby,
+            locale,
+            os,
+            recruiter,
+            totaltime) 
+        values (?)")
+        //.bind(&form_output.id)
+        .execute(&pool).await;
+}
+
+async fn get_id() {
+    let pool = setup_datapool().await;
+    let result = sqlx::query(
+        "SELECT id FROM account")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+    println!("{:?}", result[result.len() - 1]);
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
