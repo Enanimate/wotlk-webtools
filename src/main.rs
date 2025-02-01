@@ -242,7 +242,7 @@ async fn get_id() {
         .await
         .unwrap();
 
-    let data: i32 = result[0].get(0);
+    let data: u32 = result[0].get(0);
     println!("{}", data);
 }
 
