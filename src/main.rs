@@ -134,7 +134,7 @@ async fn setup_datapool() -> Pool<MySql> {
     MySqlPool::connect(&format!("mysql://{user}:{password}@localhost/acore_auth")).await.unwrap()
 }
 
-async fn check_login(Json(payload): Json<Login>) {
+async fn check_login() {
     let pool = setup_datapool().await;
     let user = "Mauzy";
 
