@@ -5,7 +5,7 @@ use axum_extra::extract::Host;
 use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{types::chrono::{self, Local}, MySql, MySqlPool, Pool};
+use sqlx::{types::chrono::{self, Local}, MySql, MySqlPool, Pool, Row};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
 use std::{net::{IpAddr, SocketAddr}, path::PathBuf};
@@ -242,7 +242,8 @@ async fn get_id() {
         .await
         .unwrap();
 
-    println!("{:?}", result[result.len() - 1]);
+    let data = result[0].column(0);
+    println!("{:?}", data);
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
