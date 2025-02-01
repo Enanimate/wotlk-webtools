@@ -151,7 +151,7 @@ async fn check_login() {
         .await
         .unwrap();
 
-    println!("{:?}\n{:?}", result[0].username, result[0].verifier.to_ascii_lowercase());
+    println!("{:?}\n{:?}", result[0].username, (result[0].verifier).to_ascii_lowercase());
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
