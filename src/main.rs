@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{types::chrono::{self, Local}, MySql, MySqlPool, Pool, Row};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use std::{net::{IpAddr, SocketAddr}, path::PathBuf};
+use std::{fmt::Debug, net::{IpAddr, SocketAddr}, path::PathBuf};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -242,8 +242,8 @@ async fn get_id() {
         .await
         .unwrap();
 
-    let data = result[0].column(0);
-    println!("{:?}", data);
+    let data: i32 = result[0].get(0);
+    println!("{}", data);
 }
 
 async fn jsonfn(Json(payload): Json<Login>) -> Json<LoginResponse> {
